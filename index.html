@@ -133,6 +133,24 @@ textarea{resize:vertical;min-height:64px;}
 .imgdrop{border:2px dashed var(--line);border-radius:12px;padding:16px;text-align:center;color:var(--muted);
   font-size:13px;background:#fafcfe;}
 .imgdrop .thumb{max-width:100%;border-radius:8px;margin-top:10px;border:1px solid var(--line);}
+/* 画像編集モーダル（配置図トレース／所在図マーカー） */
+.ed-pick{border:2px dashed var(--line);border-radius:12px;padding:24px 16px;text-align:center;color:var(--muted);font-size:14px;cursor:pointer;background:#fafcfe;line-height:1.7;}
+.ed-canvas-wrap{margin:6px 0 4px;}
+#edCanvas{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;touch-action:none;background:#e9eef2;}
+.ed-ctrl{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:13px;}
+.ed-ctrl label{flex:0 0 84px;font-weight:700;color:var(--ink);}
+.ed-ctrl input[type=range]{flex:1;accent-color:var(--navy);height:26px;}
+.ed-tip{font-size:12px;color:var(--muted);background:#f0f7ff;border-left:3px solid var(--teal);padding:8px 10px;border-radius:0 8px 8px 0;margin:8px 0;line-height:1.55;}
+.ed-actions{display:flex;gap:10px;margin-top:14px;}
+.ed-actions button{flex:1;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;}
+.ed-use{background:var(--accent);color:#fff;}
+.ed-cancel{background:#e7edf3;color:var(--navy);flex:0 0 100px;}
+.fig-btn{width:100%;padding:13px;border:1.5px solid var(--teal);background:#eafafa;color:#0f6b6b;border-radius:11px;font-size:14px;font-weight:800;cursor:pointer;}
+.fig-btn:active{background:#d6f2f2;}
+.fig-status{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:10px;background:#f5fbff;}
+.fig-status img{width:56px;height:42px;object-fit:cover;border-radius:6px;border:1px solid var(--line);}
+.fig-status .fs-t{flex:1;font-size:12.5px;font-weight:700;color:var(--ok);}
+.fig-status button{border:none;background:var(--warnbg);color:var(--warn);border-radius:8px;padding:8px 11px;font-size:12px;font-weight:700;cursor:pointer;}
 
 /* ---------- 確認ステップ ---------- */
 .summary-grid{font-size:13px;}
@@ -550,6 +568,11 @@ textarea{resize:vertical;min-height:64px;}
 
         <div class="svg-prev" id="haichiPrev"></div>
         <div class="hint" id="haichiCheck"></div>
+
+        <hr class="hr">
+        <button class="fig-btn" onclick="openEditor('haichi')">📷 航空写真でなぞって配置図を作る（任意）</button>
+        <div class="ed-tip">Googleマップの航空写真をスクショ → 取り込み → 駐車枠を実際の位置にドラッグして、サイズ・向きを合わせます。上で入れた寸法が枠に表示されます。</div>
+        <div id="haichiFigStatus"></div>
       </div>
     </section>
 
@@ -574,12 +597,9 @@ textarea{resize:vertical;min-height:64px;}
         </div>
 
         <div class="field shozai-image" style="display:none">
-          <label class="lbl">地図画像を選択</label>
-          <label class="imgdrop" for="mapImgInput" id="mapImgDrop">
-            タップして地図のスクリーンショットを選択<br>
-            <span style="font-size:11px">（画像は端末内のみで処理。下書き保存には含まれません）</span>
-          </label>
-          <input type="file" id="mapImgInput" accept="image/*" style="display:none">
+          <button class="fig-btn" onclick="openEditor('shozai')">📷 地図を取り込んで「本拠・車庫」を記入</button>
+          <div class="ed-tip">Googleマップ等の地図をスクショ → 取り込み →「本拠」と「車庫」の印を指でドラッグして配置。2点を結ぶ直線と距離（上で入力した値）が自動で入ります。</div>
+          <div id="shozaiFigStatus"></div>
         </div>
 
         <div class="note info">本拠と保管場所を地図上で<b>赤丸</b>で囲い、2点を結ぶ直線と距離を書き込むと確実です。同一敷地内なら距離記載は不要。</div>
@@ -797,10 +817,12 @@ function checkPeriod(){
    配置図 自動作図（SVG）
    ===================================================================== */
 function drawHaichi(){
+  const prev=document.getElementById("haichiPrev"); if(!prev) return;
+  if(haichiComposite){ prev.innerHTML='<img src="'+haichiComposite+'" style="width:100%;border-radius:8px;display:block">'; return; }
   const h=state.haichi;
   const w=parseFloat(h.w)||0, d=parseFloat(h.d)||0, road=parseFloat(h.road)||0, gate=parseFloat(h.gate)||0;
   const svg=buildHaichiSVG(h,w,d,road,gate);
-  document.getElementById("haichiPrev").innerHTML = (w&&d)? svg : '<div style="padding:24px;text-align:center;color:#8aa">幅と奥行を入力すると図が表示されます</div>';
+  prev.innerHTML = (w&&d)? svg : '<div style="padding:24px;text-align:center;color:#8aa">幅と奥行を入力すると図が表示されます</div>';
 }
 function buildHaichiSVG(h,w,d,road,gate){
   // キャンバス 320x300 のレイアウト。道路は roadSide に配置。
@@ -848,6 +870,153 @@ function checkHaichi(){
   if(msgs.length){ el.innerHTML=msgs.join("<br>"); el.style.color="var(--warn)"; }
   else if(sw&&sd&&vw&&vl){ el.textContent="✓ 車両がスペースに収まります"; el.style.color="var(--ok)"; }
   else el.textContent="";
+}
+
+/* =====================================================================
+   画像で図面を作る（配置図=航空写真トレース / 所在図=地図に本拠・車庫を記入）
+   画像はすべて端末内・メモリのみで処理（localStorageには保存しない）
+   ===================================================================== */
+let haichiComposite=null, shozaiComposite=null;  // 合成結果(dataURL)
+let _haichiSrc=null, _shozaiSrc=null;            // 取り込んだ元画像(縮小済)
+const ED={ mode:null, img:null, canvas:null, ctx:null,
+  frame:{cx:0,cy:0,size:0,angle:0,veil:0.25}, marks:{a:{x:0,y:0},b:{x:0,y:0}}, drag:null };
+
+function editorHTML(mode){
+  const isH = mode==="haichi";
+  const ctrls = isH ? `
+    <div class="ed-ctrl"><label>サイズ</label><input type="range" id="edSize" min="40" max="700" value="160"></div>
+    <div class="ed-ctrl"><label>回転</label><input type="range" id="edAngle" min="-180" max="180" value="0"></div>
+    <div class="ed-ctrl"><label>写真の濃さ</label><input type="range" id="edVeil" min="0" max="60" value="25"></div>` : "";
+  const tip = isH ? "駐車枠を指でドラッグして実際の駐車位置へ。サイズ・回転で形を合わせます。"
+                  : "「本拠」と「車庫」の印を指でドラッグして、それぞれの場所に置いてください。";
+  return `<button class="close" onclick="closeModal()">×</button>
+  <h3>${isH?"配置図を航空写真でなぞる":"地図に本拠・車庫を記入"}</h3>
+  <div id="edPick" class="ed-pick" onclick="document.getElementById('edFile').click()">
+    📷 タップして写真を選択<br><span style="font-size:11px">${isH?"Googleマップの航空写真など":"本拠と車庫が写った地図など"}（端末内のみで処理）</span>
+  </div>
+  <input type="file" id="edFile" accept="image/*" style="display:none">
+  <div id="edCanvasWrap" class="ed-canvas-wrap" style="display:none">
+    <canvas id="edCanvas"></canvas>
+    <div class="ed-tip">${tip}</div>
+    ${ctrls}
+    <button class="fig-btn" style="border-color:var(--line);background:#eef2f6;color:var(--navy)" onclick="document.getElementById('edFile').click()">別の写真にする</button>
+  </div>
+  <div class="ed-actions">
+    <button class="ed-cancel" onclick="closeModal()">キャンセル</button>
+    <button class="ed-use" onclick="useEditor()">この図を使う</button>
+  </div>`;
+}
+function openEditor(mode){
+  ED.mode=mode; ED.img=null; ED.canvas=null; ED.ctx=null;
+  document.getElementById("modalBody").innerHTML=editorHTML(mode);
+  document.getElementById("modalBg").classList.add("open");
+  document.getElementById("edFile").addEventListener("change",e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const r=new FileReader(); r.onload=ev=>loadEditorImage(ev.target.result); r.readAsDataURL(f);
+  });
+  const src = mode==="haichi"? _haichiSrc : _shozaiSrc;
+  if(src) loadEditorImage(src);
+}
+function loadEditorImage(dataURL){
+  const im=new Image();
+  im.onload=()=>{
+    const maxDim=1000; let w=im.naturalWidth, h=im.naturalHeight;
+    const sc=Math.min(1, maxDim/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
+    const off=document.createElement("canvas"); off.width=w; off.height=h;
+    off.getContext("2d").drawImage(im,0,0,w,h);
+    ED.img=off;
+    const url=off.toDataURL("image/jpeg",0.85);
+    if(ED.mode==="haichi") _haichiSrc=url; else _shozaiSrc=url;
+    setupEditorCanvas();
+  };
+  im.src=dataURL;
+}
+function setupEditorCanvas(){
+  document.getElementById("edPick").style.display="none";
+  document.getElementById("edCanvasWrap").style.display="block";
+  const c=document.getElementById("edCanvas");
+  c.width=ED.img.width; c.height=ED.img.height;
+  ED.canvas=c; ED.ctx=c.getContext("2d");
+  if(ED.mode==="haichi"){
+    ED.frame={cx:c.width/2, cy:c.height/2, size:Math.round(Math.min(c.width,c.height)*0.32), angle:0, veil:0.25};
+    const sz=document.getElementById("edSize");
+    if(sz){ sz.max=Math.round(Math.max(c.width,c.height)); sz.value=ED.frame.size; sz.oninput=()=>{ED.frame.size=+sz.value; drawEditor();};
+      const an=document.getElementById("edAngle"); an.value=0; an.oninput=()=>{ED.frame.angle=+an.value; drawEditor();};
+      const ve=document.getElementById("edVeil"); ve.value=25; ve.oninput=()=>{ED.frame.veil=(+ve.value)/100; drawEditor();}; }
+  } else {
+    ED.marks={a:{x:c.width*0.30,y:c.height*0.42}, b:{x:c.width*0.70,y:c.height*0.60}};
+  }
+  bindEditorPointer();
+  drawEditor();
+}
+function L2C(lx,ly){ const a=ED.frame.angle*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
+  return {x:ED.frame.cx+lx*ca-ly*sa, y:ED.frame.cy+lx*sa+ly*ca}; }
+function drawEditor(){
+  const ctx=ED.ctx, c=ED.canvas; if(!ctx) return;
+  ctx.clearRect(0,0,c.width,c.height);
+  ctx.drawImage(ED.img,0,0);
+  if(ED.mode==="haichi"){
+    ctx.fillStyle="rgba(255,255,255,"+ED.frame.veil+")"; ctx.fillRect(0,0,c.width,c.height);
+    const wm=parseFloat(state.haichi.w)||2.5, dm=parseFloat(state.haichi.d)||5.0;
+    const fw=ED.frame.size, fh=fw*(dm/wm), u=Math.max(2,c.width/220);
+    ctx.save(); ctx.translate(ED.frame.cx,ED.frame.cy); ctx.rotate(ED.frame.angle*Math.PI/180);
+    ctx.fillStyle="rgba(31,138,138,0.20)"; ctx.fillRect(-fw/2,-fh/2,fw,fh);
+    ctx.lineWidth=u*1.6; ctx.strokeStyle="#15406b"; ctx.strokeRect(-fw/2,-fh/2,fw,fh);
+    ctx.strokeStyle="#c0392b"; ctx.lineWidth=u*2; ctx.beginPath(); ctx.moveTo(-fw*0.28,fh/2); ctx.lineTo(fw*0.28,fh/2); ctx.stroke();
+    ctx.restore();
+    const fs=Math.max(13,c.width/34);
+    ctx.font="bold "+fs+"px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    const lab=(t,p,col)=>{ const hw=ctx.measureText(t).width/2+5; ctx.fillStyle="rgba(255,255,255,.85)"; ctx.fillRect(p.x-hw,p.y-fs*0.7,hw*2,fs*1.4); ctx.fillStyle=col; ctx.fillText(t,p.x,p.y); };
+    lab("幅 "+wm.toFixed(1)+"m", L2C(0,-fh/2-fs), "#15406b");
+    lab("奥行 "+dm.toFixed(1)+"m", L2C(-fw/2-fs,0), "#15406b");
+    const road=parseFloat(state.haichi.road); if(road) lab("前面道路 "+road.toFixed(1)+"m", L2C(0,fh/2+fs*1.2), "#c0392b");
+    drawNorth(c.width-fs*1.5, fs*1.8, fs);
+  } else {
+    const a=ED.marks.a, b=ED.marks.b, u=Math.max(2,c.width/250);
+    ctx.strokeStyle="#c0392b"; ctx.lineWidth=u*1.4; ctx.setLineDash([10,7]);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); ctx.setLineDash([]);
+    if(state.hokan.distance){ const mid={x:(a.x+b.x)/2,y:(a.y+b.y)/2}, t="直線 "+state.hokan.distance+"m", fs=Math.max(13,c.width/34);
+      ctx.font="bold "+fs+"px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      const hw=ctx.measureText(t).width/2+6; ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(mid.x-hw,mid.y-fs*0.7,hw*2,fs*1.4); ctx.fillStyle="#c0392b"; ctx.fillText(t,mid.x,mid.y); }
+    drawMark(a,"本拠","#c0392b"); drawMark(b,"車庫","#15406b");
+  }
+}
+function drawNorth(x,y,fs){ const ctx=ED.ctx; ctx.save(); ctx.translate(x,y); ctx.strokeStyle="#000"; ctx.fillStyle="#000"; ctx.lineWidth=Math.max(2,fs/8);
+  ctx.beginPath(); ctx.moveTo(0,fs*0.8); ctx.lineTo(0,-fs*0.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,-fs*0.85); ctx.lineTo(-fs*0.3,-fs*0.3); ctx.lineTo(fs*0.3,-fs*0.3); ctx.closePath(); ctx.fill();
+  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.font="bold "+fs+"px sans-serif"; ctx.fillText("北",0,fs*1.35); ctx.restore(); }
+function drawMark(p,label,col){ const ctx=ED.ctx, c=ED.canvas, r=Math.max(10,c.width/26);
+  ctx.lineWidth=Math.max(3,c.width/150); ctx.strokeStyle=col; ctx.fillStyle="rgba(255,255,255,.55)";
+  ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fill(); ctx.stroke();
+  const fs=Math.max(12,c.width/36), ly=p.y+r+fs; ctx.font="bold "+fs+"px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+  const hw=ctx.measureText(label).width/2+6; ctx.fillStyle=col; ctx.fillRect(p.x-hw,ly-fs*0.7,hw*2,fs*1.4); ctx.fillStyle="#fff"; ctx.fillText(label,p.x,ly); }
+function evtPos(e){ const c=ED.canvas, r=c.getBoundingClientRect(); return {x:(e.clientX-r.left)*c.width/r.width, y:(e.clientY-r.top)*c.height/r.height}; }
+function bindEditorPointer(){
+  const c=ED.canvas;
+  c.onpointerdown=(e)=>{ e.preventDefault(); try{c.setPointerCapture(e.pointerId);}catch(_){} const p=evtPos(e);
+    if(ED.mode==="haichi") ED.drag={dx:p.x-ED.frame.cx, dy:p.y-ED.frame.cy};
+    else { const da=Math.hypot(p.x-ED.marks.a.x,p.y-ED.marks.a.y), db=Math.hypot(p.x-ED.marks.b.x,p.y-ED.marks.b.y); ED.drag=(da<db)?"a":"b"; } };
+  c.onpointermove=(e)=>{ if(!ED.drag) return; e.preventDefault(); const p=evtPos(e);
+    if(ED.mode==="haichi"){ ED.frame.cx=p.x-ED.drag.dx; ED.frame.cy=p.y-ED.drag.dy; } else { ED.marks[ED.drag]={x:p.x,y:p.y}; }
+    drawEditor(); };
+  const up=()=>{ ED.drag=null; };
+  c.onpointerup=up; c.onpointercancel=up;
+}
+function useEditor(){
+  if(!ED.canvas || !ED.img){ toast("写真を選択してください"); return; }
+  const url=ED.canvas.toDataURL("image/jpeg",0.85);
+  if(ED.mode==="haichi"){ haichiComposite=url; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); }
+  else { shozaiComposite=url; refreshFigStatus("shozai"); toast("所在図に反映しました"); }
+  closeModal();
+}
+function clearFig(mode){
+  if(mode==="haichi"){ haichiComposite=null; _haichiSrc=null; drawHaichi(); } else { shozaiComposite=null; _shozaiSrc=null; }
+  refreshFigStatus(mode);
+}
+function refreshFigStatus(mode){
+  const el=document.getElementById(mode==="haichi"?"haichiFigStatus":"shozaiFigStatus"); if(!el) return;
+  const img=mode==="haichi"?haichiComposite:shozaiComposite;
+  el.innerHTML = img ? `<div class="fig-status"><img src="${img}"><div class="fs-t">✓ ${mode==="haichi"?"航空写真の配置図":"地図の所在図"}を使用中</div><button onclick="clearFig('${mode}')">解除</button></div>` : "";
 }
 
 /* =====================================================================
@@ -1071,10 +1240,13 @@ function docShoudaku(){
 function docZu(){
   const s=state,h=s.haichi;
   const w=parseFloat(h.w)||0,d=parseFloat(h.d)||0,road=parseFloat(h.road)||0,gate=parseFloat(h.gate)||0;
-  const haichiSvg = (w&&d)? buildHaichiSVG(h,w,d,road,gate) : '<div style="padding:30px;text-align:center;color:#999">（寸法未入力）</div>';
+  const haichiSvg = haichiComposite
+    ? `<img src="${haichiComposite}" style="width:100%;border:1px solid #999;border-radius:4px;display:block">`
+    : ((w&&d)? buildHaichiSVG(h,w,d,road,gate) : '<div style="padding:30px;text-align:center;color:#999">（寸法未入力）</div>');
   let shozai;
-  if(s.shozai.mode==="image" && mapImage){
-    shozai=`<img src="${mapImage}" style="max-width:100%;max-height:330px;display:block;margin:0 auto;border:1px solid #999">
+  const shozaiImg = (s.shozai.mode==="image") ? (shozaiComposite || mapImage || null) : null;
+  if(shozaiImg){
+    shozai=`<img src="${shozaiImg}" style="max-width:100%;max-height:360px;display:block;margin:0 auto;border:1px solid #999">
             <p class="small center" style="margin-top:6px">○：使用の本拠　／　○：保管場所　／　直線距離 ${esc(s.hokan.distance)||"___"}m</p>`;
   } else {
     shozai=`<div style="min-height:230px;border:1px dashed #999;border-radius:4px;padding:14px;font-size:13px;line-height:2.2">
@@ -1195,7 +1367,7 @@ function saveDraft(){
 }
 function loadDraft(i){ const ds=getDrafts(); if(ds[i]){ state=Object.assign(DEFAULT(),ds[i].data); hydrate(); applyAll(); closeModal(); toast("読み込みました"); gotoStep(0); } }
 function delDraft(i){ const ds=getDrafts(); ds.splice(i,1); localStorage.setItem(DRAFTS,JSON.stringify(ds)); openModal("draft"); }
-function newCase(){ if(confirm("入力内容をクリアして新規作成しますか？")){ state=DEFAULT(); mapImage=null; localStorage.removeItem(AUTOSAVE); hydrate(); applyAll(); closeModal(); gotoStep(0); toast("新規作成"); } }
+function newCase(){ if(confirm("入力内容をクリアして新規作成しますか？")){ state=DEFAULT(); mapImage=null; haichiComposite=null; shozaiComposite=null; _haichiSrc=null; _shozaiSrc=null; localStorage.removeItem(AUTOSAVE); hydrate(); applyAll(); refreshFigStatus("haichi"); refreshFigStatus("shozai"); closeModal(); gotoStep(0); toast("新規作成"); } }
 function exportJson(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
