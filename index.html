@@ -230,6 +230,11 @@ textarea{resize:vertical;min-height:64px;}
 .offbody{font-size:12px;line-height:1.7;}
 .applibox{border:1px solid #000;padding:6px 10px;font-size:12px;line-height:1.95;}
 .offsmall{font-size:9px;line-height:1.5;}
+/* 下書き表示（提出は公式様式へ） */
+.draft-banner{border:2px solid #c0392b;color:#c0392b;font-weight:700;text-align:center;padding:5px;margin-bottom:6px;font-size:12.5px;border-radius:3px;}
+.sheet.draft{position:relative;}
+.sheet.draft::after{content:"下　書　き";position:absolute;top:44%;left:0;right:0;text-align:center;transform:rotate(-22deg);font-size:92px;font-weight:800;color:rgba(192,57,43,.10);letter-spacing:.12em;white-space:nowrap;pointer-events:none;z-index:0;}
+.sheet.draft>*{position:relative;z-index:1;}
 .sheet .right{text-align:right;}
 .sheet .center{text-align:center;}
 .sheet .small{font-size:11px;color:#333;}
@@ -637,8 +642,22 @@ textarea{resize:vertical;min-height:64px;}
         <div class="docpick" id="docPick"></div>
 
         <div class="note info" style="margin-top:14px">
-          「書類を作成」を押すとプレビューが表示されます。スマホの<b>共有→プリント</b>または「PDFに保存」で出力してください。コンビニ印刷も可能です。
+          作成されるのは<b>下書き（見本）</b>です。下の「公式様式（原本）」を印刷し、下書きを見ながら<b>原本へ転記</b>して提出してください。出力はスマホの<b>共有→プリント</b>／「PDFに保存」。
         </div>
+      </div>
+
+      <div class="card">
+        <h2>公式様式（原本）の入手</h2>
+        <p class="lead">提出は静岡県警の<b>公式様式（原本）</b>に記入します。原本を開いて印刷・保存し、上で作った下書きを見本に転記してください。</p>
+        <div class="linklist">
+          <a href="https://www.pref.shizuoka.jp/police/_res/projects/project_police/_page_/002/000/577/2-1syoumeisinsei0803.pdf" target="_blank" rel="noopener">▶ 自動車保管場所証明申請書（原本PDF）</a>
+          <a href="https://www.pref.shizuoka.jp/police/_res/projects/project_police/_page_/002/000/577/2-3hokanbasyozu0803.pdf" target="_blank" rel="noopener">▶ 保管場所の所在図・配置図（原本PDF）</a>
+          <a href="https://www.pref.shizuoka.jp/police/_res/projects/project_police/_page_/002/000/577/2-5someisyomen0803.pdf" target="_blank" rel="noopener">▶ 自認書（原本PDF）</a>
+          <a href="https://www.pref.shizuoka.jp/police/_res/projects/project_police/_page_/002/000/577/2-7syoudakusyoumei0803.pdf" target="_blank" rel="noopener">▶ 保管場所使用承諾証明書（原本PDF）</a>
+          <a href="https://www.pref.shizuoka.jp/police/shinse/kotsu/kiseka/jikayo.html" target="_blank" rel="noopener">▶ 最新版・様式一覧（静岡県警 自家用車 手続ページ）</a>
+          <a href="https://www.pref.shizuoka.jp/police/shinse/kotsu/kiseka/kejidosha.html" target="_blank" rel="noopener">▶ 軽自動車の届出様式はこちら</a>
+        </div>
+        <div class="hint" style="margin-top:8px">※ リンク先は静岡県警の公式PDF。様式は改定されることがあるので最新版もご確認ください。自認書・承諾書・所在図配置図は様式自由のためアプリ出力のまま提出も可能です。</div>
       </div>
     </section>
 
@@ -1306,7 +1325,7 @@ function renderDocPick(){
   const s=state, kei=isKei();
   let docs=[ kei
     ? ["届","自動車保管場所届出書","届出書＋控えを印刷（軽・手数料無料）"]
-    : ["申","自動車保管場所証明申請書","公式様式（別記様式第1号）・正副2通"] ];
+    : ["申","自動車保管場所証明申請書（下書き）","見本。公式様式（原本）に転記して提出"] ];
   if(s.kubun.kengen==="jinin") docs.push(["自","保管場所使用権原疎明書面（自認書）","自己所有のため"]);
   else docs.push(["承","保管場所使用承諾証明書", state.shoudaku.forOwner!==false?"権利者（所有者）記入用・原本":"記入済み（控え）"]);
   docs.push(["図","保管場所の所在図・配置図","配置図は自動作図"]);
@@ -1335,7 +1354,8 @@ function docShinseiOfficial(){
   const applicant = s.shinseisha.isCorp ? `${esc(s.shinseisha.corpName)}　${esc(s.shinseisha.daihyo)}` : esc(s.shinseisha.name);
   const hokan = `${esc(s.hokan.addr)}　${esc(s.hokan.name)}　${esc(s.hokan.kukaku)}`;
   const daiko = s.kubun.daiko? "　※行政書士による代理申請（委任状の要否は窓口確認）。":"";
-  return `<div class="sheet">
+  return `<div class="sheet draft">
+    <div class="draft-banner">下書き（転記用）― この用紙は提出できません。公式様式（原本）に転記してください</div>
     <div class="offlbl">別記様式第１号（第１条関係）</div>
     <table class="off">
       <tr><td colspan="6" class="ttl">自動車保管場所証明申請書</td></tr>
@@ -1394,7 +1414,8 @@ function docTodoke(){
   const s=state, v=s.vehicle;
   const applicant = s.shinseisha.isCorp ? `${esc(s.shinseisha.corpName)}<br>${esc(s.shinseisha.daihyo)}` : esc(s.shinseisha.name);
   const daikoNote = s.kubun.daiko?`<br>※ 行政書士が代理届出（委任状の要否は${esc(stn().name)}にご確認ください）。`:"";
-  return `<div class="sheet">
+  return `<div class="sheet draft">
+    <div class="draft-banner">下書き（転記用）― この用紙は提出できません。公式様式（原本）に転記してください</div>
     <h2 class="dt">自動車保管場所届出書</h2>
     <div class="dt-sub">（${ate()}）　※届出書＋控え 2通 提出</div>
     <table class="ftable">
