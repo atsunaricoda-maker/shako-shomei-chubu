@@ -235,6 +235,13 @@ textarea{resize:vertical;min-height:64px;}
 .sheet.draft{position:relative;}
 .sheet.draft::after{content:"下　書　き";position:absolute;top:44%;left:0;right:0;text-align:center;transform:rotate(-22deg);font-size:92px;font-weight:800;color:rgba(192,57,43,.10);letter-spacing:.12em;white-space:nowrap;pointer-events:none;z-index:0;}
 .sheet.draft>*{position:relative;z-index:1;}
+/* スタンプ式 配置図エディタ */
+#stCanvas{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none;}
+.stamp-palette{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px;}
+.stamp-palette button{flex:1 1 30%;border:1.5px solid var(--teal);background:#eafafa;color:#0f6b6b;border-radius:9px;padding:9px 4px;font-size:12.5px;font-weight:700;cursor:pointer;}
+.stamp-palette button:active{background:#d6f2f2;}
+.stamp-ctrl{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0;}
+.stamp-ctrl button{flex:1 1 18%;border:1px solid var(--line);background:#f3f6f9;border-radius:9px;padding:9px 4px;font-size:12px;font-weight:700;cursor:pointer;}
 .sheet .right{text-align:right;}
 .sheet .center{text-align:center;}
 .sheet .small{font-size:11px;color:#333;}
@@ -601,6 +608,10 @@ textarea{resize:vertical;min-height:64px;}
         <button class="fig-btn" onclick="openEditor('haichi')">📷 航空写真でなぞって配置図を作る（任意）</button>
         <div class="ed-tip">Googleマップの航空写真をスクショ → 取り込み → 駐車枠を実際の位置にドラッグして、サイズ・向きを合わせます。上で入れた寸法が枠に表示されます。</div>
         <div id="haichiFigStatus"></div>
+
+        <hr class="hr">
+        <button class="fig-btn" onclick="openStampEditor()">✏️ スタンプで配置図を作る（部品を置いて作図）</button>
+        <div class="ed-tip">「保管場所」「自宅」「道路」などの部品を置いて、ドラッグで移動・大きさ変更。航空写真なしでも直感的に作図できます。</div>
       </div>
     </section>
 
@@ -1070,19 +1081,139 @@ function useEditor(){
   if(!ED.canvas || !ED.img){ toast("写真を選択してください"); return; }
   if(ED.mode==="haichi") drawEditor(true);   // クリーン描画（角の①〜④番号を消して出力）
   const url=ED.canvas.toDataURL("image/jpeg",0.85);
-  if(ED.mode==="haichi"){ drawEditor(false); haichiComposite=url; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); }
+  if(ED.mode==="haichi"){ drawEditor(false); haichiComposite=url; haichiKind="航空写真"; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); }
   else { shozaiComposite=url; state.shozai.mode="image"; refreshShozai(); refreshFigStatus("shozai"); toast("所在図に反映しました"); }
   closeModal();
 }
 function clearFig(mode){
-  if(mode==="haichi"){ haichiComposite=null; _haichiSrc=null; drawHaichi(); } else { shozaiComposite=null; _shozaiSrc=null; }
+  if(mode==="haichi"){ haichiComposite=null; haichiKind=""; _haichiSrc=null; drawHaichi(); } else { shozaiComposite=null; _shozaiSrc=null; }
   refreshFigStatus(mode);
 }
 function refreshFigStatus(mode){
   const el=document.getElementById(mode==="haichi"?"haichiFigStatus":"shozaiFigStatus"); if(!el) return;
   const img=mode==="haichi"?haichiComposite:shozaiComposite;
-  el.innerHTML = img ? `<div class="fig-status"><img src="${img}"><div class="fs-t">✓ ${mode==="haichi"?"航空写真の配置図":"地図の所在図"}を使用中</div><button onclick="clearFig('${mode}')">解除</button></div>` : "";
+  const lab = mode==="haichi" ? ("配置図（"+(haichiKind||"作図")+"）") : "地図の所在図";
+  el.innerHTML = img ? `<div class="fig-status"><img src="${img}"><div class="fs-t">✓ ${lab}を使用中</div><button onclick="clearFig('${mode}')">解除</button></div>` : "";
 }
+
+/* =====================================================================
+   スタンプ式 配置図エディタ（部品を置いて移動・拡大縮小・回転）
+   ===================================================================== */
+let haichiKind="";
+const ST={ canvas:null, ctx:null, stamps:[], sel:-1, drag:null, bgImg:null, useBg:false };
+const STAMP_DEFS={
+  park:{label:"保管場所", w:150,h:280, fill:"rgba(31,138,138,.18)", stroke:"#15406b"},
+  home:{label:"自宅",     w:200,h:150, fill:"rgba(21,64,107,.10)", stroke:"#15406b"},
+  bldg:{label:"建物・隣家",w:170,h:130, fill:"rgba(120,120,120,.12)", stroke:"#555"},
+  road:{label:"道路",     w:760,h:70,  fill:"rgba(150,150,150,.22)", stroke:"#555"},
+  door:{label:"出入口",   w:110,h:60,  fill:"rgba(192,57,43,.10)", stroke:"#c0392b"},
+  north:{label:"北",      w:60, h:78,  fill:"none", stroke:"#000"}
+};
+function rrect(ctx,x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function openStampEditor(){
+  document.getElementById("modalBody").innerHTML=stampEditorHTML();
+  document.getElementById("modalBg").classList.add("open");
+  const c=document.getElementById("stCanvas"); c.width=820; c.height=600; ST.canvas=c; ST.ctx=c.getContext("2d");
+  ST.stamps=[]; ST.sel=-1; ST.drag=null; ST.useBg=false; ST.bgImg=null;
+  addStamp('road',30,510,false); addStamp('park',335,170,false); ST.sel=-1;
+  bindStampPointer(); drawStamps();
+}
+function stampEditorHTML(){ return `<button class="close" onclick="closeModal()">×</button>
+  <h3>スタンプで配置図を作る</h3>
+  <div class="ed-tip">下のボタンで部品を置き、<b>ドラッグで移動／右下の⤡で大きさ変更</b>。選択中は［×］削除・上の⟳で回転。サイズ・回転・削除はボタンでも操作できます。</div>
+  <canvas id="stCanvas"></canvas>
+  <div class="stamp-palette">
+    <button onclick="addStamp('park')">🅿 保管場所</button>
+    <button onclick="addStamp('home')">🏠 自宅</button>
+    <button onclick="addStamp('road')">🛣 道路</button>
+    <button onclick="addStamp('bldg')">🏢 建物・隣家</button>
+    <button onclick="addStamp('door')">↧ 出入口</button>
+    <button onclick="addStamp('north')">🧭 方位（北）</button>
+  </div>
+  <div class="stamp-ctrl">
+    <button onclick="stampScale(1.15)">＋大きく</button>
+    <button onclick="stampScale(0.87)">－小さく</button>
+    <button onclick="stampRotate(-15)">⟲回転</button>
+    <button onclick="stampRotate(15)">⟳回転</button>
+    <button onclick="stampDelete()" style="color:var(--warn)">🗑削除</button>
+  </div>
+  <label class="chk" style="margin-top:6px"><input type="checkbox" id="stBg" onchange="stampToggleBg(this.checked)"><span>航空写真を背景に使う（取得済みのとき）</span></label>
+  <div class="ed-actions">
+    <button class="ed-cancel" onclick="closeModal()">キャンセル</button>
+    <button class="ed-use" onclick="useStampEditor()">この図を使う</button>
+  </div>`;
+}
+function addStamp(type,x,y,select){
+  const d=STAMP_DEFS[type]; if(!d||!ST.canvas) return;
+  const n=ST.stamps.length;
+  ST.stamps.push({type,w:d.w,h:d.h,rot:0,
+    x:(x!==undefined?x:(ST.canvas.width-d.w)/2+(n%5)*18),
+    y:(y!==undefined?y:(ST.canvas.height-d.h)/2+(n%5)*18)});
+  if(select!==false) ST.sel=ST.stamps.length-1;
+  drawStamps();
+}
+function stampLabel(s){
+  if(s.type==="park"){ const wm=parseFloat(state.haichi.w),dm=parseFloat(state.haichi.d); return "保管場所"+((wm&&dm)?("\n"+wm.toFixed(1)+"m×"+dm.toFixed(1)+"m"):""); }
+  if(s.type==="road"){ const r=parseFloat(state.haichi.road); return "道路"+(r?("\n幅員"+r.toFixed(1)+"m"):""); }
+  return STAMP_DEFS[s.type].label;
+}
+function drawStamps(clean){
+  const ctx=ST.ctx,c=ST.canvas; if(!ctx) return;
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#fff"; ctx.fillRect(0,0,c.width,c.height);
+  if(ST.useBg&&ST.bgImg){ const im=ST.bgImg,r=Math.min(c.width/im.width,c.height/im.height),w=im.width*r,h=im.height*r;
+    ctx.drawImage(im,(c.width-w)/2,(c.height-h)/2,w,h); ctx.fillStyle="rgba(255,255,255,.30)"; ctx.fillRect(0,0,c.width,c.height); }
+  ST.stamps.forEach((s,i)=>{ drawOneStamp(s); if(!clean&&i===ST.sel) drawStampChrome(s); });
+}
+function drawOneStamp(s){
+  const ctx=ST.ctx,d=STAMP_DEFS[s.type],cx=s.x+s.w/2,cy=s.y+s.h/2;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(s.rot*Math.PI/180);
+  if(s.type==="north"){
+    ctx.strokeStyle="#000"; ctx.fillStyle="#000"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(0,s.h/2); ctx.lineTo(0,-s.h/4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-s.h/2); ctx.lineTo(-s.w/3,-s.h/5); ctx.lineTo(s.w/3,-s.h/5); ctx.closePath(); ctx.fill();
+    ctx.font="bold 20px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("北",0,s.h/2-2);
+  } else {
+    if(d.fill!=="none"){ ctx.fillStyle=d.fill; rrect(ctx,-s.w/2,-s.h/2,s.w,s.h,8); ctx.fill(); }
+    ctx.lineWidth=2.5; ctx.strokeStyle=d.stroke; rrect(ctx,-s.w/2,-s.h/2,s.w,s.h,8); ctx.stroke();
+    if(s.type==="door"){ ctx.strokeStyle="#c0392b"; ctx.lineWidth=4; const a=Math.min(s.w,s.h)*0.3;
+      ctx.beginPath(); ctx.moveTo(0,-a); ctx.lineTo(0,a); ctx.lineTo(-a*0.6,a-a*0.6); ctx.moveTo(0,a); ctx.lineTo(a*0.6,a-a*0.6); ctx.stroke(); }
+    const lbl=stampLabel(s).split("\n"); ctx.fillStyle=d.stroke; ctx.font="bold 15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    lbl.forEach((t,k)=>ctx.fillText(t,0,(k-(lbl.length-1)/2)*18));
+  }
+  ctx.restore();
+}
+function stampCorner(s,lx,ly){ const cx=s.x+s.w/2,cy=s.y+s.h/2,a=s.rot*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a); return {x:cx+lx*ca-ly*sa,y:cy+lx*sa+ly*ca}; }
+function drawStampChrome(s){
+  const ctx=ST.ctx, p=[stampCorner(s,-s.w/2,-s.h/2),stampCorner(s,s.w/2,-s.h/2),stampCorner(s,s.w/2,s.h/2),stampCorner(s,-s.w/2,s.h/2)];
+  ctx.strokeStyle="#e8821a"; ctx.lineWidth=2; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(p[0].x,p[0].y); for(let i=1;i<4;i++)ctx.lineTo(p[i].x,p[i].y); ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+  const rotp=stampCorner(s,0,-s.h/2-30);
+  stHandle(p[2].x,p[2].y,"#15406b","⤡"); stHandle(p[1].x,p[1].y,"#c0392b","×"); stHandle(rotp.x,rotp.y,"#1f8a8a","⟳");
+}
+function stHandle(x,y,col,gly){ const ctx=ST.ctx; ctx.fillStyle="#fff"; ctx.strokeStyle=col; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(x,y,14,0,7); ctx.fill(); ctx.stroke(); ctx.fillStyle=col; ctx.font="bold 15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(gly,x,y); }
+function stPos(e){ const c=ST.canvas,r=c.getBoundingClientRect(); return {x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height}; }
+function inStamp(s,p){ const cx=s.x+s.w/2,cy=s.y+s.h/2,a=-s.rot*Math.PI/180,dx=p.x-cx,dy=p.y-cy,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a); return Math.abs(lx)<=s.w/2&&Math.abs(ly)<=s.h/2; }
+function bindStampPointer(){
+  const c=ST.canvas;
+  c.onpointerdown=(e)=>{ e.preventDefault(); try{c.setPointerCapture(e.pointerId);}catch(_){} const p=stPos(e);
+    if(ST.sel>=0){ const s=ST.stamps[ST.sel];
+      const br=stampCorner(s,s.w/2,s.h/2),del=stampCorner(s,s.w/2,-s.h/2),rp=stampCorner(s,0,-s.h/2-30);
+      if(Math.hypot(p.x-del.x,p.y-del.y)<=18){ stampDelete(); return; }
+      if(Math.hypot(p.x-br.x,p.y-br.y)<=18){ ST.drag={mode:"resize"}; return; }
+      if(Math.hypot(p.x-rp.x,p.y-rp.y)<=18){ ST.drag={mode:"rot"}; return; } }
+    for(let i=ST.stamps.length-1;i>=0;i--){ if(inStamp(ST.stamps[i],p)){ ST.sel=i; ST.drag={mode:"move",px:p.x,py:p.y}; drawStamps(); return; } }
+    ST.sel=-1; ST.drag=null; drawStamps(); };
+  c.onpointermove=(e)=>{ if(!ST.drag) return; e.preventDefault(); const p=stPos(e),s=ST.stamps[ST.sel]; if(!s) return; const cx=s.x+s.w/2,cy=s.y+s.h/2;
+    if(ST.drag.mode==="move"){ s.x+=p.x-ST.drag.px; s.y+=p.y-ST.drag.py; ST.drag.px=p.x; ST.drag.py=p.y; }
+    else if(ST.drag.mode==="resize"){ const a=-s.rot*Math.PI/180,dx=p.x-cx,dy=p.y-cy,lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a),nw=Math.max(28,Math.abs(lx)*2),nh=Math.max(24,Math.abs(ly)*2); s.x=cx-nw/2; s.y=cy-nh/2; s.w=nw; s.h=nh; }
+    else if(ST.drag.mode==="rot"){ s.rot=Math.atan2(p.y-cy,p.x-cx)*180/Math.PI+90; }
+    drawStamps(); };
+  const up=()=>{ ST.drag=null; }; c.onpointerup=up; c.onpointercancel=up;
+}
+function stampDelete(){ if(ST.sel>=0){ ST.stamps.splice(ST.sel,1); ST.sel=-1; ST.drag=null; drawStamps(); } else toast("部品を選択してください"); }
+function stampScale(f){ if(ST.sel<0){toast("部品を選択してください");return;} const s=ST.stamps[ST.sel],cx=s.x+s.w/2,cy=s.y+s.h/2; s.w=Math.max(28,s.w*f); s.h=Math.max(24,s.h*f); s.x=cx-s.w/2; s.y=cy-s.h/2; drawStamps(); }
+function stampRotate(deg){ if(ST.sel<0){toast("部品を選択してください");return;} ST.stamps[ST.sel].rot+=deg; drawStamps(); }
+function stampToggleBg(on){ ST.useBg=on; if(on){ if(!_haichiSrc){ toast("先に航空写真を取得/取り込みしてください"); const cb=document.getElementById("stBg"); if(cb)cb.checked=false; ST.useBg=false; return; } if(!ST.bgImg){ const im=new Image(); im.onload=()=>{ST.bgImg=im; drawStamps();}; im.src=_haichiSrc; return; } } drawStamps(); }
+function useStampEditor(){ if(!ST.stamps.length){ toast("部品を置いてください"); return; } ST.sel=-1; drawStamps(true); haichiComposite=ST.canvas.toDataURL("image/png"); haichiKind="スタンプ"; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); closeModal(); }
 
 /* =====================================================================
    地図リンク
