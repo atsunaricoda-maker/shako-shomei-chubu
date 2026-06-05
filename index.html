@@ -885,15 +885,14 @@ function checkHaichi(){
 let haichiComposite=null, shozaiComposite=null;  // 合成結果(dataURL)
 let _haichiSrc=null, _shozaiSrc=null;            // 取り込んだ元画像(縮小済)
 const ED={ mode:null, img:null, canvas:null, ctx:null,
-  frame:{cx:0,cy:0,size:0,angle:0,veil:0.25}, marks:{a:{x:0,y:0},b:{x:0,y:0}}, drag:null };
+  corners:[], veil:0.22, marks:{a:{x:0,y:0},b:{x:0,y:0}}, drag:null };
 
 function editorHTML(mode){
   const isH = mode==="haichi";
   const ctrls = isH ? `
-    <div class="ed-ctrl"><label>サイズ</label><input type="range" id="edSize" min="40" max="700" value="160"></div>
-    <div class="ed-ctrl"><label>回転</label><input type="range" id="edAngle" min="-180" max="180" value="0"></div>
-    <div class="ed-ctrl"><label>写真の濃さ</label><input type="range" id="edVeil" min="0" max="60" value="25"></div>` : "";
-  const tip = isH ? "駐車枠を指でドラッグして実際の駐車位置へ。サイズ・回転で形を合わせます。"
+    <div class="ed-ctrl"><label>写真の濃さ</label><input type="range" id="edVeil" min="0" max="60" value="22"></div>
+    <button class="inline-btn" style="width:100%;margin-top:2px" onclick="resetCorners()">枠を中央にリセット</button>` : "";
+  const tip = isH ? "駐車スペースの四隅に①〜④を合わせてください（①左上→②右上→③右下→④左下／③④側＝前面道路・出入口）。枠の中を押すと全体を動かせます。"
                   : "「本拠」と「車庫」の印を指でドラッグして、それぞれの場所に置いてください。";
   const mapBtn = isH ? `<button class="fig-btn" style="border-color:var(--teal);background:#eafafa;color:#0f6b6b;margin-top:8px" onclick="aerialFromMap(0)">🛰 地図から航空写真を取得（地図連携）</button>` : "";
   return `<button class="close" onclick="closeModal()">×</button>
@@ -947,39 +946,45 @@ function setupEditorCanvas(){
   c.width=ED.img.width; c.height=ED.img.height;
   ED.canvas=c; ED.ctx=c.getContext("2d");
   if(ED.mode==="haichi"){
-    ED.frame={cx:c.width/2, cy:c.height/2, size:Math.round(Math.min(c.width,c.height)*0.32), angle:0, veil:0.25};
-    const sz=document.getElementById("edSize");
-    if(sz){ sz.max=Math.round(Math.max(c.width,c.height)); sz.value=ED.frame.size; sz.oninput=()=>{ED.frame.size=+sz.value; drawEditor();};
-      const an=document.getElementById("edAngle"); an.value=0; an.oninput=()=>{ED.frame.angle=+an.value; drawEditor();};
-      const ve=document.getElementById("edVeil"); ve.value=25; ve.oninput=()=>{ED.frame.veil=(+ve.value)/100; drawEditor();}; }
+    ED.veil=0.22; resetCorners();
+    const ve=document.getElementById("edVeil"); if(ve){ ve.value=22; ve.oninput=()=>{ED.veil=(+ve.value)/100; drawEditor();}; }
   } else {
     ED.marks={a:{x:c.width*0.30,y:c.height*0.42}, b:{x:c.width*0.70,y:c.height*0.60}};
   }
   bindEditorPointer();
   drawEditor();
 }
-function L2C(lx,ly){ const a=ED.frame.angle*Math.PI/180, ca=Math.cos(a), sa=Math.sin(a);
-  return {x:ED.frame.cx+lx*ca-ly*sa, y:ED.frame.cy+lx*sa+ly*ca}; }
-function drawEditor(){
+function resetCorners(){ const c=ED.canvas; if(!c) return;
+  const wm=parseFloat(state.haichi.w)||2.5, dm=parseFloat(state.haichi.d)||5.0, ar=dm/wm;
+  let fw=c.width*0.42, fh=fw*ar; if(fh>c.height*0.72){ fh=c.height*0.72; fw=fh/ar; }
+  const cx=c.width/2, cy=c.height/2;
+  ED.corners=[{x:cx-fw/2,y:cy-fh/2},{x:cx+fw/2,y:cy-fh/2},{x:cx+fw/2,y:cy+fh/2},{x:cx-fw/2,y:cy+fh/2}];
+  drawEditor();
+}
+function pointInQuad(p,P){ let inside=false; for(let i=0,j=3;i<4;j=i++){ const xi=P[i].x,yi=P[i].y,xj=P[j].x,yj=P[j].y;
+  if(((yi>p.y)!==(yj>p.y)) && (p.x<(xj-xi)*(p.y-yi)/(yj-yi)+xi)) inside=!inside; } return inside; }
+function drawEditor(clean){
   const ctx=ED.ctx, c=ED.canvas; if(!ctx) return;
   ctx.clearRect(0,0,c.width,c.height);
   ctx.drawImage(ED.img,0,0);
   if(ED.mode==="haichi"){
-    ctx.fillStyle="rgba(255,255,255,"+ED.frame.veil+")"; ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle="rgba(255,255,255,"+ED.veil+")"; ctx.fillRect(0,0,c.width,c.height);
     const wm=parseFloat(state.haichi.w)||2.5, dm=parseFloat(state.haichi.d)||5.0;
-    const fw=ED.frame.size, fh=fw*(dm/wm), u=Math.max(2,c.width/220);
-    ctx.save(); ctx.translate(ED.frame.cx,ED.frame.cy); ctx.rotate(ED.frame.angle*Math.PI/180);
-    ctx.fillStyle="rgba(31,138,138,0.20)"; ctx.fillRect(-fw/2,-fh/2,fw,fh);
-    ctx.lineWidth=u*1.6; ctx.strokeStyle="#15406b"; ctx.strokeRect(-fw/2,-fh/2,fw,fh);
-    ctx.strokeStyle="#c0392b"; ctx.lineWidth=u*2; ctx.beginPath(); ctx.moveTo(-fw*0.28,fh/2); ctx.lineTo(fw*0.28,fh/2); ctx.stroke();
-    ctx.restore();
-    const fs=Math.max(13,c.width/34);
+    const P=ED.corners, u=Math.max(2,c.width/220);
+    ctx.beginPath(); ctx.moveTo(P[0].x,P[0].y); for(let i=1;i<4;i++) ctx.lineTo(P[i].x,P[i].y); ctx.closePath();
+    ctx.fillStyle="rgba(31,138,138,0.22)"; ctx.fill();
+    ctx.lineWidth=u*1.7; ctx.strokeStyle="#15406b"; ctx.stroke();
+    ctx.strokeStyle="#c0392b"; ctx.lineWidth=u*2.6; ctx.beginPath(); ctx.moveTo(P[3].x,P[3].y); ctx.lineTo(P[2].x,P[2].y); ctx.stroke();
+    const fs=Math.max(13,c.width/32), mid=(a,b)=>({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
     ctx.font="bold "+fs+"px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    const lab=(t,p,col)=>{ const hw=ctx.measureText(t).width/2+5; ctx.fillStyle="rgba(255,255,255,.85)"; ctx.fillRect(p.x-hw,p.y-fs*0.7,hw*2,fs*1.4); ctx.fillStyle=col; ctx.fillText(t,p.x,p.y); };
-    lab("幅 "+wm.toFixed(1)+"m", L2C(0,-fh/2-fs), "#15406b");
-    lab("奥行 "+dm.toFixed(1)+"m", L2C(-fw/2-fs,0), "#15406b");
-    const road=parseFloat(state.haichi.road); if(road) lab("前面道路 "+road.toFixed(1)+"m", L2C(0,fh/2+fs*1.2), "#c0392b");
-    drawNorth(c.width-fs*1.5, fs*1.8, fs);
+    const lab=(t,p,col)=>{ const hw=ctx.measureText(t).width/2+5; ctx.fillStyle="rgba(255,255,255,.88)"; ctx.fillRect(p.x-hw,p.y-fs*0.75,hw*2,fs*1.5); ctx.fillStyle=col; ctx.fillText(t,p.x,p.y); };
+    lab("幅 "+wm.toFixed(1)+"m", mid(P[0],P[1]), "#15406b");
+    lab("奥行 "+dm.toFixed(1)+"m", mid(P[1],P[2]), "#15406b");
+    const road=parseFloat(state.haichi.road); if(road) lab("前面道路 "+road.toFixed(1)+"m", mid(P[2],P[3]), "#c0392b");
+    drawNorth(c.width-fs*1.6, fs*1.9, fs);
+    if(!clean){ const r=Math.max(12,c.width/24);
+      for(let i=0;i<4;i++){ ctx.beginPath(); ctx.fillStyle="rgba(255,255,255,.92)"; ctx.strokeStyle="#15406b"; ctx.lineWidth=u*1.4; ctx.arc(P[i].x,P[i].y,r,0,7); ctx.fill(); ctx.stroke();
+        ctx.fillStyle="#15406b"; ctx.font="bold "+r+"px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(i+1),P[i].x,P[i].y); } }
   } else {
     const a=ED.marks.a, b=ED.marks.b, u=Math.max(2,c.width/250);
     ctx.strokeStyle="#c0392b"; ctx.lineWidth=u*1.4; ctx.setLineDash([10,7]);
@@ -1003,18 +1008,26 @@ function evtPos(e){ const c=ED.canvas, r=c.getBoundingClientRect(); return {x:(e
 function bindEditorPointer(){
   const c=ED.canvas;
   c.onpointerdown=(e)=>{ e.preventDefault(); try{c.setPointerCapture(e.pointerId);}catch(_){} const p=evtPos(e);
-    if(ED.mode==="haichi") ED.drag={dx:p.x-ED.frame.cx, dy:p.y-ED.frame.cy};
-    else { const da=Math.hypot(p.x-ED.marks.a.x,p.y-ED.marks.a.y), db=Math.hypot(p.x-ED.marks.b.x,p.y-ED.marks.b.y); ED.drag=(da<db)?"a":"b"; } };
+    if(ED.mode==="haichi"){
+      const r=Math.max(18,c.width/18); let hit=-1, bd=Infinity;
+      for(let i=0;i<4;i++){ const d=Math.hypot(p.x-ED.corners[i].x,p.y-ED.corners[i].y); if(d<bd){bd=d;hit=i;} }
+      if(bd<=r) ED.drag={t:"c",i:hit};
+      else if(pointInQuad(p,ED.corners)) ED.drag={t:"m",x:p.x,y:p.y};
+      else ED.drag=null;
+    } else { const da=Math.hypot(p.x-ED.marks.a.x,p.y-ED.marks.a.y), db=Math.hypot(p.x-ED.marks.b.x,p.y-ED.marks.b.y); ED.drag=(da<db)?"a":"b"; } };
   c.onpointermove=(e)=>{ if(!ED.drag) return; e.preventDefault(); const p=evtPos(e);
-    if(ED.mode==="haichi"){ ED.frame.cx=p.x-ED.drag.dx; ED.frame.cy=p.y-ED.drag.dy; } else { ED.marks[ED.drag]={x:p.x,y:p.y}; }
+    if(ED.mode==="haichi"){ if(ED.drag.t==="c"){ ED.corners[ED.drag.i]={x:p.x,y:p.y}; }
+      else if(ED.drag.t==="m"){ const dx=p.x-ED.drag.x, dy=p.y-ED.drag.y; for(const q of ED.corners){q.x+=dx;q.y+=dy;} ED.drag.x=p.x; ED.drag.y=p.y; } }
+    else { ED.marks[ED.drag]={x:p.x,y:p.y}; }
     drawEditor(); };
   const up=()=>{ ED.drag=null; };
   c.onpointerup=up; c.onpointercancel=up;
 }
 function useEditor(){
   if(!ED.canvas || !ED.img){ toast("写真を選択してください"); return; }
+  if(ED.mode==="haichi") drawEditor(true);   // クリーン描画（角の①〜④番号を消して出力）
   const url=ED.canvas.toDataURL("image/jpeg",0.85);
-  if(ED.mode==="haichi"){ haichiComposite=url; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); }
+  if(ED.mode==="haichi"){ drawEditor(false); haichiComposite=url; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); }
   else { shozaiComposite=url; refreshFigStatus("shozai"); toast("所在図に反映しました"); }
   closeModal();
 }
