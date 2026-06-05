@@ -219,6 +219,17 @@ textarea{resize:vertical;min-height:64px;}
 .ftable th{background:#f2f2f2;font-weight:600;width:30%;text-align:center;}
 .ftable td.val{font-size:14px;}
 .ftable .big{font-size:15px;letter-spacing:.05em;}
+/* 公式様式（自動車保管場所証明申請書）の忠実再現用 */
+.off{width:100%;border-collapse:collapse;table-layout:fixed;}
+.off td{border:1px solid #000;padding:5px 7px;font-size:12px;vertical-align:middle;word-break:break-all;}
+.off .ttl{text-align:center;font-size:16px;letter-spacing:.4em;padding:7px 0;}
+.off .hd{text-align:center;letter-spacing:.15em;}
+.off .ctr{text-align:center;}
+.off .v{font-size:13px;}
+.offlbl{font-size:10.5px;margin-bottom:4px;}
+.offbody{font-size:12px;line-height:1.7;}
+.applibox{border:1px solid #000;padding:6px 10px;font-size:12px;line-height:1.95;}
+.offsmall{font-size:9px;line-height:1.5;}
 .sheet .right{text-align:right;}
 .sheet .center{text-align:center;}
 .sheet .small{font-size:11px;color:#333;}
@@ -1295,7 +1306,7 @@ function renderDocPick(){
   const s=state, kei=isKei();
   let docs=[ kei
     ? ["届","自動車保管場所届出書","届出書＋控えを印刷（軽・手数料無料）"]
-    : ["申","自動車保管場所証明申請書","2通（正・副）を印刷して提出"] ];
+    : ["申","自動車保管場所証明申請書","公式様式（別記様式第1号）・正副2通"] ];
   if(s.kubun.kengen==="jinin") docs.push(["自","保管場所使用権原疎明書面（自認書）","自己所有のため"]);
   else docs.push(["承","保管場所使用承諾証明書", state.shoudaku.forOwner!==false?"権利者（所有者）記入用・原本":"記入済み（控え）"]);
   docs.push(["図","保管場所の所在図・配置図","配置図は自動作図"]);
@@ -1316,36 +1327,90 @@ function wareki(iso){
 }
 function esc(v){ return (v==null?"":(""+v)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
 
-function docMain(){
-  const s=state, v=s.vehicle, kei=isKei();
-  const applicant = s.shinseisha.isCorp
-    ? `${esc(s.shinseisha.corpName)}<br>${esc(s.shinseisha.daihyo)}`
-    : esc(s.shinseisha.name);
-  const title = kei? "自動車保管場所届出書" : "自動車保管場所証明申請書";
-  const sub = kei? `（${ate()}）　※届出書＋控え 2通 提出` : `（${ate()}）　※正・副 2通 提出`;
-  const who = kei? "届出者" : "申請者";
-  const footer = kei
-    ? "※ 軽自動車は車検・ナンバー取得後の届出です（届出義務地域は15日以内）。手数料は無料・証明書の交付はありません。押印不要。車名等は車検証のとおり記入。"
-    : "※ 押印は不要です（令和3年〜）。車名・型式・車台番号・大きさは車検証のとおり記入。";
-  const daikoNote = s.kubun.daiko?`<br>※ 行政書士が代理${kei?"届出":"申請"}（委任状の要否は${esc(stn().name)}にご確認ください）。`:"";
+function docMain(){ return isKei()? docTodoke() : docShinseiOfficial(); }
+
+/* 普通車：自動車保管場所証明申請書（静岡県警 公式様式 別記様式第1号 を忠実再現） */
+function docShinseiOfficial(){
+  const s=state, v=s.vehicle;
+  const applicant = s.shinseisha.isCorp ? `${esc(s.shinseisha.corpName)}　${esc(s.shinseisha.daihyo)}` : esc(s.shinseisha.name);
+  const hokan = `${esc(s.hokan.addr)}　${esc(s.hokan.name)}　${esc(s.hokan.kukaku)}`;
+  const daiko = s.kubun.daiko? "　※行政書士による代理申請（委任状の要否は窓口確認）。":"";
   return `<div class="sheet">
-    <h2 class="dt">${title}</h2>
-    <div class="dt-sub">${sub}</div>
+    <div class="offlbl">別記様式第１号（第１条関係）</div>
+    <table class="off">
+      <tr><td colspan="6" class="ttl">自動車保管場所証明申請書</td></tr>
+      <tr>
+        <td class="hd" style="width:17%">車　名</td>
+        <td class="hd" style="width:17%">型　式</td>
+        <td class="hd" style="width:24%">車台番号</td>
+        <td class="hd" colspan="3">自動車の大きさ</td>
+      </tr>
+      <tr style="height:62px">
+        <td class="v ctr">${esc(v.maker)}</td>
+        <td class="v ctr">${esc(v.katashiki)}</td>
+        <td class="v ctr">${esc(v.daiban)}</td>
+        <td colspan="3" style="font-size:12px;line-height:1.7">長さ　${esc(v.len)||"　　　"}　センチメートル<br>幅　　${esc(v.wid)||"　　　"}　センチメートル<br>高さ　${esc(v.hei)||"　　　"}　センチメートル</td>
+      </tr>
+      <tr><td class="hd">自動車の使用の本拠の位置</td><td colspan="5" class="v">${esc(honkyoAddr())}</td></tr>
+      <tr><td class="hd">自動車の保管場所の位置</td><td colspan="5" class="v">${hokan}</td></tr>
+      <tr><td colspan="6" class="offbody" style="padding:8px 10px">
+        自動車の保管場所の位置欄記載の場所は、申請に係る自動車の保管場所として確保されていることを証明願います。
+        <div style="text-align:right;margin:10px 24px 4px 0">${JST_DATE()}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px">
+          <div style="white-space:nowrap;padding-bottom:8px;font-size:13px">${ate()}</div>
+          <div class="applibox" style="flex:1;max-width:60%">
+            〒（　${esc(s.shinseisha.zip)}　）<br>
+            住所　${esc(s.shinseisha.addr)}<br>
+            <div style="display:flex;justify-content:space-between"><span>申請者</span><span>電話　${esc(s.shinseisha.tel)}</span></div>
+            氏名（名称）　${applicant}
+          </div>
+        </div>
+      </td></tr>
+      <tr><td colspan="6" style="font-size:12px">第　　　　　　号</td></tr>
+      <tr><td colspan="6" class="ttl" style="font-size:15px;letter-spacing:.3em">自動車保管場所証明書</td></tr>
+      <tr><td colspan="6" class="offbody" style="padding:8px 10px">
+        自動車の保管場所の位置欄記載の場所は、上記申請に係る自動車の保管場所として確保されていることを証明する。
+        <div style="text-align:right;margin:10px 24px 4px 0">令和　　　年　　　月　　　日</div>
+        <div style="text-align:right;padding-right:10px;font-size:13px">静岡県${esc(stn().name)}長　　　　　㊞</div>
+      </td></tr>
+      <tr>
+        <td class="ctr" style="font-size:10px">使用権原</td>
+        <td colspan="2" style="font-size:11px">自己 ・ 他人 ・ 共有</td>
+        <td class="ctr" style="font-size:10px">連絡先</td>
+        <td colspan="2" style="font-size:10px">氏名<br>電話</td>
+      </tr>
+    </table>
+    <div class="offsmall" style="margin-top:5px">※ 自動車の登録手続に必要となる自動車保管場所証明書は、登録申請日からさかのぼっておおむね１か月以内に発行されたものとなりますので、注意してください。</div>
+    <div class="offsmall" style="margin-top:4px">備考　1　次に掲げる場合は、所在図の添付を省略することができる。ただし、警察署長は、保管場所の付近の目標となる地物及びその位置を知るため特に必要があると認めるときは、所在図の提出を求めることができる。<br>
+      　(1)　自動車の使用の本拠の位置が、旧自動車（申請者が保有者である自動車であって申請に係るもの以外のものをいう。以下同じ。）に係る使用の本拠の位置と同一であり、かつ、申請に係る場所が旧自動車の保管場所と同一であるとき。<br>
+      　(2)　自動車の使用の本拠の位置が、保管場所の位置と同一であるとき（(1)に該当する場合を除く。）。<br>
+      　2　用紙の大きさは、日本産業規格Ａ列４番とする。</div>
+    <p class="offsmall" style="margin-top:6px">※ 静岡県警察の公式様式（別記様式第1号）に準拠。正・副2通を提出。押印は令和3年〜不要。最終的な様式は提出先（${esc(stn().name)}）でご確認ください。${daiko}</p>
+  </div>`;
+}
+
+/* 軽：自動車保管場所届出書 */
+function docTodoke(){
+  const s=state, v=s.vehicle;
+  const applicant = s.shinseisha.isCorp ? `${esc(s.shinseisha.corpName)}<br>${esc(s.shinseisha.daihyo)}` : esc(s.shinseisha.name);
+  const daikoNote = s.kubun.daiko?`<br>※ 行政書士が代理届出（委任状の要否は${esc(stn().name)}にご確認ください）。`:"";
+  return `<div class="sheet">
+    <h2 class="dt">自動車保管場所届出書</h2>
+    <div class="dt-sub">（${ate()}）　※届出書＋控え 2通 提出</div>
     <table class="ftable">
       <tr><th>車名（メーカー）</th><td class="val big">${esc(v.maker)}</td><th>型式</th><td class="val big">${esc(v.katashiki)}</td></tr>
       <tr><th>車台番号</th><td class="val big" colspan="3">${esc(v.daiban)}</td></tr>
       <tr><th>自動車の大きさ</th><td class="val" colspan="3">長さ ${esc(v.len)} cm　幅 ${esc(v.wid)} cm　高さ ${esc(v.hei)} cm</td></tr>
       <tr><th>自動車の使用の<br>本拠の位置</th><td class="val" colspan="3">${esc(honkyoAddr())}</td></tr>
       <tr><th>自動車の保管<br>場所の位置</th><td class="val" colspan="3">${esc(s.hokan.addr)} ${esc(s.hokan.name)} ${esc(s.hokan.kukaku)}</td></tr>
-      ${kei?"":`<tr><th>保管場所標章番号</th><td class="val" colspan="3">${esc(v.hyoshoNo)||"（新規・なし）"}</td></tr>`}
     </table>
     <div class="addr-block right">
       ${JST_DATE()}<br>
-      ${who}　住所　${esc(s.shinseisha.addr)}<br>
+      届出者　住所　${esc(s.shinseisha.addr)}<br>
       氏名（名称）　${applicant}　<br>
       電話　${esc(s.shinseisha.tel)}
     </div>
-    <p class="small" style="margin-top:18px">${footer}${daikoNote}</p>
+    <p class="small" style="margin-top:18px">※ 軽自動車は車検・ナンバー取得後の届出です（届出義務地域は15日以内）。手数料は無料・証明書の交付はありません。押印不要。車名等は車検証のとおり記入。${daikoNote}</p>
   </div>`;
 }
 function docJinin(){
