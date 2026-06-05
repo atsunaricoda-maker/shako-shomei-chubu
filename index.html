@@ -585,30 +585,17 @@ textarea{resize:vertical;min-height:64px;}
     <section class="step" data-step="7">
       <div class="card">
         <h2>⑧ 所在図</h2>
-        <p class="lead">本拠と保管場所の位置関係を示す広域図。<b>Googleマップの印刷を別紙添付</b>する方法が簡単で、広く認められています。</p>
+        <p class="lead">本拠と保管場所の位置関係を示す図。<b>⑤までに入れた住所から自動で作成</b>します（このステップを開くと自動作成、住所変更時は再作成を押してください）。</p>
 
-        <div class="field">
-          <label class="lbl">所在図の作り方</label>
-          <div class="choices">
-            <label class="choice"><input type="radio" name="shozai_mode" value="beppu" data-bind="shozai.mode">
-              <span><span class="ct">Googleマップを別紙添付</span><span class="cd">図面欄に「別紙のとおり」と印字。地図は別途印刷して添付</span></span></label>
-            <label class="choice"><input type="radio" name="shozai_mode" value="image" data-bind="shozai.mode">
-              <span><span class="ct">地図画像を貼り付けて印刷</span><span class="cd">スクショ等を所在図欄に埋め込み</span></span></label>
-          </div>
-        </div>
+        <button class="fig-btn" style="border-color:var(--teal);background:#eafafa;color:#0f6b6b" onclick="autoShozai()">🗺 住所から所在図を自動作成 / 再作成</button>
+        <div class="ed-tip">本拠・保管場所の住所をもとに、Googleマップで所在図（本拠・車庫の印＋直線＋距離）を自動生成します。※Google Maps APIキー（⚙）が必要です。</div>
+        <div id="shozaiFigStatus"></div>
 
-        <div class="field">
-          <button class="inline-btn" style="width:100%;padding:12px" onclick="openMapForAddr()">🗺 保管場所をGoogleマップで開く</button>
-        </div>
-
-        <div class="field shozai-image" style="display:none">
-          <button class="fig-btn" style="border-color:var(--teal);background:#eafafa;color:#0f6b6b;margin-bottom:8px" onclick="autoShozai()">🗺 住所から所在図を自動作成（地図連携）</button>
-          <button class="fig-btn" onclick="openEditor('shozai')">📷 地図を取り込んで「本拠・車庫」を記入（手動）</button>
-          <div class="ed-tip">⚙でAPIキー設定時は「自動作成」で住所から所在図を生成。手動は地図スクショを取り込み「本拠」「車庫」の印をドラッグで配置します。</div>
-          <div id="shozaiFigStatus"></div>
-        </div>
-
-        <div class="note info">本拠と保管場所を地図上で<b>赤丸</b>で囲い、2点を結ぶ直線と距離を書き込むと確実です。同一敷地内なら距離記載は不要。</div>
+        <hr class="hr">
+        <div class="hint" style="font-weight:700;margin-bottom:6px">他の方法（キー未設定・微調整したいとき）</div>
+        <button class="fig-btn" onclick="openEditor('shozai')">📷 地図を取り込んで手動で記入</button>
+        <button class="inline-btn" style="width:100%;margin-top:10px" onclick="openMapForAddr()">🗺 保管場所をGoogleマップで開く（確認用）</button>
+        <label class="chk" style="margin-top:12px"><input type="checkbox" id="shozaiBeppu" onchange="setBeppu(this.checked)"><span>自動作成せず「別紙のとおり」と印字（地図は別途印刷して添付）</span></label>
       </div>
     </section>
 
@@ -678,7 +665,7 @@ const DEFAULT = ()=>({
   shoudaku:{ kankei:"", useFrom:"", useTo:"", ownerName:"", ownerAddr:"", ownerTel:"",
              keiyakuSame:true, keiyakuName:"", keiyakuAddr:"", keiyakuTel:"" },
   haichi:{ type:"平面", w:"", d:"", gate:"", road:"", roadSide:"south", shutter:false, rinsetsu:"" },
-  shozai:{ mode:"beppu" },
+  shozai:{ mode:"image" },
   appDate:""
 });
 let state = DEFAULT();
@@ -773,8 +760,12 @@ function refreshHonkyo(){
 function refreshKeiyaku(){
   document.querySelector(".keiyaku-fields").style.display=state.shoudaku.keiyakuSame?"none":"";
 }
-function refreshShozai(){
-  document.querySelector(".shozai-image").style.display=(state.shozai.mode==="image")?"":"none";
+function refreshShozai(){ const cb=document.getElementById("shozaiBeppu"); if(cb) cb.checked=(state.shozai.mode==="beppu"); }
+function setBeppu(on){ state.shozai.mode = on?"beppu":"image"; scheduleSave(); }
+function maybeAutoShozai(){
+  if(GMAPS.key && !shozaiComposite && !GMAPS.shozaiAutoTried && state.shozai.mode!=="beppu" && honkyoAddr() && state.hokan.addr){
+    GMAPS.shozaiAutoTried=true; autoShozai();
+  }
 }
 function buildStationOptions(){
   const sel=document.getElementById("stationSel");
@@ -1041,7 +1032,7 @@ function useEditor(){
   if(ED.mode==="haichi") drawEditor(true);   // クリーン描画（角の①〜④番号を消して出力）
   const url=ED.canvas.toDataURL("image/jpeg",0.85);
   if(ED.mode==="haichi"){ drawEditor(false); haichiComposite=url; drawHaichi(); refreshFigStatus("haichi"); toast("配置図に反映しました"); }
-  else { shozaiComposite=url; refreshFigStatus("shozai"); toast("所在図に反映しました"); }
+  else { shozaiComposite=url; state.shozai.mode="image"; refreshShozai(); refreshFigStatus("shozai"); toast("所在図に反映しました"); }
   closeModal();
 }
 function clearFig(mode){
@@ -1216,6 +1207,7 @@ function gotoStep(i){
   // 確認ステップ更新
   if(step===TOTAL-1){ renderSummary(); renderValid(); renderDocPick(); }
   if(step===6) drawHaichi();
+  if(step===7) maybeAutoShozai();
   // ステップナビを該当位置へスクロール
   const chip=document.querySelectorAll(".step-chip")[step];
   if(chip) chip.scrollIntoView({behavior:"smooth",inline:"center",block:"nearest"});
@@ -1522,7 +1514,7 @@ function saveDraft(){
 }
 function loadDraft(i){ const ds=getDrafts(); if(ds[i]){ state=Object.assign(DEFAULT(),ds[i].data); hydrate(); applyAll(); closeModal(); toast("読み込みました"); gotoStep(0); } }
 function delDraft(i){ const ds=getDrafts(); ds.splice(i,1); localStorage.setItem(DRAFTS,JSON.stringify(ds)); openModal("draft"); }
-function newCase(){ if(confirm("入力内容をクリアして新規作成しますか？")){ state=DEFAULT(); mapImage=null; haichiComposite=null; shozaiComposite=null; _haichiSrc=null; _shozaiSrc=null; localStorage.removeItem(AUTOSAVE); hydrate(); applyAll(); refreshFigStatus("haichi"); refreshFigStatus("shozai"); closeModal(); gotoStep(0); toast("新規作成"); } }
+function newCase(){ if(confirm("入力内容をクリアして新規作成しますか？")){ state=DEFAULT(); mapImage=null; haichiComposite=null; shozaiComposite=null; _haichiSrc=null; _shozaiSrc=null; GMAPS.shozaiAutoTried=false; localStorage.removeItem(AUTOSAVE); hydrate(); applyAll(); refreshFigStatus("haichi"); refreshFigStatus("shozai"); closeModal(); gotoStep(0); toast("新規作成"); } }
 function exportJson(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
