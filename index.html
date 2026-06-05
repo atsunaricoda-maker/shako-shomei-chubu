@@ -493,6 +493,11 @@ textarea{resize:vertical;min-height:64px;}
         <div class="note warn">この書面は<b>所有者・管理者本人</b>が作成・記名するものです。申請者が無断で作成すると私文書偽造になります。証明日から<b>3か月以内</b>のものが必要です。</div>
 
         <div class="field">
+          <label class="chk"><input type="checkbox" data-bind="shoudaku.forOwner" id="shoudakuForOwner">
+            <span><b>権利者（所有者）記入用で出力する（推奨）</b><span class="hint">所有者欄・承諾日を空欄にして印刷し、所有者・管理者ご本人に手書き・署名してもらう原本用です。チェックを外すと内容を印字（控え用）。</span></span></label>
+        </div>
+
+        <div class="field">
           <label class="lbl">使用者と契約者の関係<span class="req">必須</span></label>
           <select data-bind="shoudaku.kankei">
             <option value="">選択してください</option>
@@ -508,11 +513,13 @@ textarea{resize:vertical;min-height:64px;}
         </div>
         <div class="hint" id="periodHint"></div>
 
+        <div class="owner-fields">
         <hr class="hr">
-        <p class="lead" style="margin-bottom:8px"><b>土地・建物の所有者または管理委託者</b>（承諾する人）</p>
+        <p class="lead" style="margin-bottom:8px"><b>土地・建物の所有者または管理委託者</b>（承諾する人）<span class="opt">「記入済み」出力のときのみ使用</span></p>
         <div class="field"><label class="lbl">氏名・名称</label><input type="text" data-bind="shoudaku.ownerName" placeholder="例）○○不動産株式会社"></div>
         <div class="field"><label class="lbl">住所</label><input type="text" data-bind="shoudaku.ownerAddr" placeholder="所有者・管理会社の住所"></div>
         <div class="field"><label class="lbl">電話番号</label><input type="tel" data-bind="shoudaku.ownerTel" placeholder="0538-00-0000" inputmode="tel"></div>
+        </div>
 
         <hr class="hr">
         <p class="lead" style="margin-bottom:8px"><b>契約者</b>（駐車場の賃貸借契約者）</p>
@@ -662,7 +669,7 @@ const DEFAULT = ()=>({
   honkyo:{ same:true, addr:"" },
   hokan:{ addr:"", name:"", kukaku:"", distance:"" },
   jinin:{ obj:"土地" },
-  shoudaku:{ kankei:"", useFrom:"", useTo:"", ownerName:"", ownerAddr:"", ownerTel:"",
+  shoudaku:{ kankei:"", useFrom:"", useTo:"", ownerName:"", ownerAddr:"", ownerTel:"", forOwner:true,
              keiyakuSame:true, keiyakuName:"", keiyakuAddr:"", keiyakuTel:"" },
   haichi:{ type:"平面", w:"", d:"", gate:"", road:"", roadSide:"south", shutter:false, rinsetsu:"" },
   shozai:{ mode:"image" },
@@ -731,6 +738,7 @@ function onChange(path){
   if(path==="shinseisha.isCorp") refreshCorp();
   if(path==="honkyo.same") refreshHonkyo();
   if(path==="shoudaku.keiyakuSame") refreshKeiyaku();
+  if(path==="shoudaku.forOwner") refreshShoudakuMode();
   if(path==="hokan.distance") refreshDist();
   if(path.startsWith("haichi")) {drawHaichi();checkHaichi();}
   if(path==="shoudaku.useFrom"||path==="shoudaku.useTo") checkPeriod();
@@ -760,6 +768,7 @@ function refreshHonkyo(){
 function refreshKeiyaku(){
   document.querySelector(".keiyaku-fields").style.display=state.shoudaku.keiyakuSame?"none":"";
 }
+function refreshShoudakuMode(){ const el=document.querySelector(".owner-fields"); if(el) el.style.display=(state.shoudaku.forOwner!==false)?"none":""; }
 function refreshShozai(){ const cb=document.getElementById("shozaiBeppu"); if(cb) cb.checked=(state.shozai.mode==="beppu"); }
 function setBeppu(on){ state.shozai.mode = on?"beppu":"image"; scheduleSave(); }
 function maybeAutoShozai(){
@@ -1288,7 +1297,7 @@ function renderDocPick(){
     ? ["届","自動車保管場所届出書","届出書＋控えを印刷（軽・手数料無料）"]
     : ["申","自動車保管場所証明申請書","2通（正・副）を印刷して提出"] ];
   if(s.kubun.kengen==="jinin") docs.push(["自","保管場所使用権原疎明書面（自認書）","自己所有のため"]);
-  else docs.push(["承","保管場所使用承諾証明書","所有者・管理者に記名してもらう"]);
+  else docs.push(["承","保管場所使用承諾証明書", state.shoudaku.forOwner!==false?"権利者（所有者）記入用・原本":"記入済み（控え）"]);
   docs.push(["図","保管場所の所在図・配置図","配置図は自動作図"]);
   docs.push(["✓","提出チェックリスト（控え）","行政書士用の確認シート"]);
   document.getElementById("docPick").innerHTML=docs.map(([i,t,n])=>
@@ -1359,12 +1368,26 @@ function docJinin(){
   </div>`;
 }
 function docShoudaku(){
-  const s=state, d=s.shoudaku;
+  const s=state, d=s.shoudaku, fo=(d.forOwner!==false);
   const keiyaku = d.keiyakuSame ? "上記使用者に同じ"
     : `${esc(d.keiyakuName)}　${esc(d.keiyakuAddr)}　${esc(d.keiyakuTel)}`;
+  const ln="________________________________";
+  const banner = fo ? `<div class="center" style="border:2px solid #000;border-radius:4px;padding:6px;margin:6px 0 4px;font-weight:700;font-size:13px">土地・建物の所有者（管理者）記入用 ― この用紙にご記入・ご署名ください</div>` : "";
+  const ownerBlock = fo
+    ? `令和　　年　　月　　日<br>
+      土地・建物の所有者<br>（又は管理委託者）　※下欄をご記入ください<br>
+      住所　${ln}<br>
+      氏名（名称）　${ln}　印<br>
+      電話　${ln}`
+    : `${JST_DATE()}<br>
+      土地・建物の所有者<br>（又は管理委託者）<br>
+      住所　${esc(d.ownerAddr)}<br>
+      氏名（名称）　${esc(d.ownerName)}　<br>
+      電話　${esc(d.ownerTel)}`;
   return `<div class="sheet">
     <h2 class="dt" style="letter-spacing:.25em">保管場所使用承諾証明書</h2>
     <div class="dt-sub">${ate()}</div>
+    ${banner}
     <table class="ftable" style="margin-top:10px">
       <tr><th>保管場所の位置</th><td class="val" colspan="3">${esc(s.hokan.addr)}</td></tr>
       <tr><th>保管場所の名称・区画</th><td class="val" colspan="3">${esc(s.hokan.name)}　${esc(s.hokan.kukaku)}</td></tr>
@@ -1375,13 +1398,9 @@ function docShoudaku(){
     </table>
     <p class="bodytext">上記のとおり、当方所有（管理）の土地・建物を、上記使用者が自動車の保管場所として使用することを承諾します。</p>
     <div class="addr-block right">
-      ${JST_DATE()}<br>
-      土地・建物の所有者<br>（又は管理委託者）<br>
-      住所　${esc(d.ownerAddr)}<br>
-      氏名（名称）　${esc(d.ownerName)}　<br>
-      電話　${esc(d.ownerTel)}
+      ${ownerBlock}
     </div>
-    <p class="small" style="margin-top:14px">※ この書面は<b>所有者・管理者ご本人</b>が記名してください。証明日から3か月以内のものが必要です。押印は原則不要（求められる場合あり）。</p>
+    <p class="small" style="margin-top:14px">※ この書面は<b>所有者・管理者ご本人</b>が記入・署名してください（原本）。証明日から3か月以内のものが必要です。押印は原則不要（求められる場合あり）。</p>
   </div>`;
 }
 function docZu(){
@@ -1663,7 +1682,7 @@ function draftModal(){
    初期化
    ===================================================================== */
 function applyAll(){
-  refreshKengen(); refreshCorp(); refreshHonkyo(); refreshKeiyaku();
+  refreshKengen(); refreshCorp(); refreshHonkyo(); refreshKeiyaku(); refreshShoudakuMode();
   refreshDist(); refreshShozai(); refreshChoiceCards(); drawHaichi(); checkHaichi(); checkPeriod();
   refreshKei(); refreshHeader();
 }
